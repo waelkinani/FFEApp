@@ -1,0 +1,122 @@
+/**
+ * Mint House by Kasa – Dallas Downtown
+ * FF&E / OS&E Checklist — Google Apps Script Backend
+ * File: Code.gs
+ *
+ * DEPLOY SETTINGS:
+ *   Execute as:      Me (your Google account)
+ *   Who has access:  Anyone
+ *
+ * After deploying, copy the Web App URL and paste it into
+ * the APPS_SCRIPT_URL constant in script.js.
+ */
+
+/**
+ * Handles POST requests from the checklist app.
+ * Supports two input formats:
+ *   1. fetch with mode:no-cors  → body is raw JSON in e.postData.contents
+ *   2. hidden form POST fallback → body is in e.parameter.payload
+ */
+function doPost(e) {
+  try {
+    var payload;
+
+    if (e.postData && e.postData.contents) {
+      payload = JSON.parse(e.postData.contents);
+    } else if (e.parameter && e.parameter.payload) {
+      payload = JSON.parse(e.parameter.payload);
+    } else {
+      return respond({ status: 'error', message: 'No payload received.' });
+    }
+
+    var sheetId   = payload.sheetId;
+    var tabName   = payload.tabName;
+    var headerRow = payload.headerRow;
+    var rows      = payload.rows;
+
+    if (!sheetId || !tabName || !rows || !rows.length) {
+      return respond({ status: 'error', message: 'Missing required fields.' });
+    }
+
+    var ss    = SpreadsheetApp.openById(sheetId);
+    var sheet = ss.getSheetByName(tabName);
+
+    // Create tab with styled header if it doesn't exist
+    if (!sheet) {
+      sheet = ss.insertSheet(tabName);
+      sheet.appendRow(headerRow);
+      var headerRange = sheet.getRange(1, 1, 1, headerRow.length);
+      headerRange.setFontWeight('bold');
+      headerRange.setBackground('#112438');
+      headerRange.setFontColor('#FFFFFF');
+      sheet.setFrozenRows(1);
+    }
+
+    // Append all rows in one batch
+    if (rows.length > 0) {
+      var lastRow = sheet.getLastRow();
+      sheet.getRange(lastRow + 1, 1, rows.length, rows[0].length).setValues(rows);
+    }
+
+    sheet.autoResizeColumns(1, headerRow.length);
+
+    return respond({
+      status:  'success',
+      message: rows.length + ' rows written to tab "' + tabName + '".',
+      rows:    rows.length
+    });
+
+  } catch (err) {
+    Logger.log('doPost error: ' + err.toString());
+    return respond({ status: 'error', message: err.toString() });
+  }
+}
+
+/**
+ * GET handler — visit the URL in a browser to confirm the web app is live.
+ */
+function doGet() {
+  return HtmlService.createHtmlOutput(
+    '<style>body{font-family:sans-serif;padding:2rem;background:#FAF9F6}</style>' +
+    '<h2 style="color:#112438">&#10003; Kasa FF&amp;E / OS&amp;E &mdash; Apps Script is live</h2>' +
+    '<p style="color:#5F738B">POST endpoint is ready to receive checklist data.</p>'
+  );
+}
+
+function respond(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * Run this manually in the Apps Script editor to test sheet access
+ * before going live. Click Run → testWrite.
+ */
+function testWrite() {
+  var sheetId   = '1kC-UgNC3ouwhviMMTiCnxVvcs-GALR9w98K8bBhDIi4';
+  var tabName   = 'FFE_OSE_Reports';
+  var headerRow = ['Date','Unit','Room Type','Kitchen Type','RT Confirmed',
+                   'Unit Notes','Tab','Section','Item','Status','Qty','Item Notes'];
+  var testRow   = [
+    '05/19/2026','TEST','1BD K','full','Yes','Test run',
+    'FF&E','Bedroom','Test item','Yes','1','Apps Script working'
+  ];
+
+  var ss    = SpreadsheetApp.openById(sheetId);
+  var sheet = ss.getSheetByName(tabName);
+
+  if (!sheet) {
+    sheet = ss.insertSheet(tabName);
+    sheet.appendRow(headerRow);
+    var r = sheet.getRange(1, 1, 1, headerRow.length);
+    r.setFontWeight('bold');
+    r.setBackground('#112438');
+    r.setFontColor('#FFFFFF');
+    sheet.setFrozenRows(1);
+    Logger.log('Created tab: ' + tabName);
+  }
+
+  sheet.appendRow(testRow);
+  Logger.log('Test row written successfully to ' + tabName);
+}
